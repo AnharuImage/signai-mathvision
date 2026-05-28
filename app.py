@@ -161,14 +161,20 @@ class GameVisionProcessor(VideoProcessorBase):
 
         return frame.from_ndarray(img, format="bgr24")
 
-# ================== RENDER KAMERA WEB ==================
+# ================== RENDER KAMERA WEB (MULTI-STUN SERVERS) ==================
 with col_cam:
     st.subheader("🎥 Deteksi Kamera Web")
     webrtc_streamer(
         key="SignAI-MathVision-PIMNAS-FINAL-PRO",
         mode=WebRtcMode.SENDRECV,
         video_processor_factory=GameVisionProcessor,
-        rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
+        rtc_configuration={
+            "iceServers": [
+                {"urls": ["stun:stun.l.google.com:19302"]},
+                {"urls": ["stun:stun1.l.google.com:19302"]},
+                {"urls": ["stun:stun.services.mozilla.com"]}
+            ]
+        },
         media_stream_constraints={"video": True, "audio": False},
         async_processing=True
     )
