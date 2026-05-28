@@ -23,7 +23,7 @@ if 'has_spoken_soal' not in st.session_state:
 if 'feedback' not in st.session_state:
     st.session_state.feedback = ""
 
-# Bank Soal PKM-PM Kamu
+# Bank Soal PKM-PM
 if 'soal_list' not in st.session_state:
     soals = [
         "0+0", "5-5", "10-10", "20-20", "30-30", "40-40", "50-50",
@@ -99,12 +99,12 @@ def konversi_ke_angka_asl(hand, label):
     else:
         return thumb_up + index_up + middle_up + ring_up + pinky_up
 
-# ================== GAME VISION PROCESSOR (LAZY INITIALIZATION) ==================
+# ================== GAME VISION PROCESSOR ==================
 class GameVisionProcessor(VideoTransformerBase):
     def __init__(self):
         self.total_nilai_isyarat = 0
         self.tangan_muncul = False
-        self.hands = None  # Dibuat None dulu agar tidak crash saat init thread
+        self.hands = None  
         self.mp_drawing = mp.solutions.drawing_utils
 
     def transform(self, frame):
@@ -112,7 +112,6 @@ class GameVisionProcessor(VideoTransformerBase):
         img = cv2.flip(img, 1)
         rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         
-        # Inisialisasi MediaPipe secara aman langsung di dalam thread video
         if self.hands is None:
             self.hands = mp.solutions.hands.Hands(
                 min_detection_confidence=0.55,
@@ -134,7 +133,7 @@ class GameVisionProcessor(VideoTransformerBase):
                 handedness = result.multi_handedness[i]
                 label = handedness.classification[0].label
                 
-                # MENGGAMBAR KANVAS SKELETAL JARI (SCANNER GESTURE AKTIF)
+                # MENGGAMBAR KANVAS SKELETAL JARI (SCANNER JALAN DI HP JURI)
                 self.mp_drawing.draw_landmarks(img, hand_landmarks, mp.solutions.hands.HAND_CONNECTIONS)
                 
                 nilai_angka = konversi_ke_angka_asl(hand_landmarks, label)
@@ -152,7 +151,7 @@ class GameVisionProcessor(VideoTransformerBase):
                 daftar_tangan.sort(key=lambda x: x[1])
                 self.total_nilai_isyarat = (daftar_tangan[0][0] * 10) + daftar_tangan[1][0]
 
-        # Gambarkan status pembacaan ke layar kamera
+        # Tampilkan angka isyarat terbaca langsung di atas video streaming
         cv2.putText(img, f"Isyarat Terbaca: {self.total_nilai_isyarat}", (20, 50), 
                     cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 200, 255), 2)
         return img
@@ -162,9 +161,9 @@ col1, col2 = st.columns([2, 1])
 
 with col1:
     st.subheader("🎥 Deteksi Kamera Web")
-    # Gunakan Key V5 yang fresh untuk memotong cache error Linux terdahulu
+    # Menggunakan KEY fresh baru agar terbebas dari bad cache server
     ctx = webrtc_streamer(
-        key="SignAI-MathVision-PIMNAS-V5",
+        key="SignAI-MathVision-PIMNAS-FINAL-PRO",
         mode=WebRtcMode.SENDRECV,
         video_processor_factory=GameVisionProcessor,
         rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
@@ -178,9 +177,10 @@ if 'last_val' not in st.session_state:
     st.session_state.last_val = -1
 
 nilai_realtime = 0
-if ctx.video_transformer:
-    nilai_realtime = ctx.video_transformer.total_nilai_isyarat
-    tangan_aktif = ctx.video_transformer.tangan_muncul
+# PERBAIKAN: Menggunakan ctx.video_processor untuk menggantikan video_transformer yang usang
+if ctx.video_processor:
+    nilai_realtime = ctx.video_processor.total_nilai_isyarat
+    tangan_aktif = ctx.video_processor.tangan_muncul
     
     current_time = time.time()
     if tangan_aktif:
