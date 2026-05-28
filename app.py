@@ -23,7 +23,7 @@ if 'has_spoken_soal' not in st.session_state:
 if 'feedback' not in st.session_state:
     st.session_state.feedback = ""
 
-# Bank Soal
+# Bank Soal PKM-PM Kamu
 if 'soal_list' not in st.session_state:
     soals = [
         "0+0", "5-5", "10-10", "20-20", "30-30", "40-40", "50-50",
@@ -63,18 +63,6 @@ if not st.session_state.has_spoken_soal:
     speak_web(f"Berapakah {soal_teks}?")
     st.session_state.has_spoken_soal = True
 
-# ================== GLOBAL MEDIAPIPE INITIALIZATION ==================
-@st.cache_resource
-def get_mediapipe_hands():
-    return mp.solutions.hands.Hands(
-        min_detection_confidence=0.55,
-        min_tracking_confidence=0.55,
-        max_num_hands=2
-    )
-
-hands_model = get_mediapipe_hands()
-mp_drawing = mp.solutions.drawing_utils
-
 # ================== LOGIKA ASL INTERPRETATION ==================
 def konversi_ke_angka_asl(hand, label):
     thumb_up = 0
@@ -111,18 +99,28 @@ def konversi_ke_angka_asl(hand, label):
     else:
         return thumb_up + index_up + middle_up + ring_up + pinky_up
 
-# ================== GAME VISION PROCESSOR ==================
+# ================== GAME VISION PROCESSOR (LAZY INITIALIZATION) ==================
 class GameVisionProcessor(VideoTransformerBase):
     def __init__(self):
         self.total_nilai_isyarat = 0
         self.tangan_muncul = False
+        self.hands = None  # Dibuat None dulu agar tidak crash saat init thread
+        self.mp_drawing = mp.solutions.drawing_utils
 
     def transform(self, frame):
         img = frame.to_ndarray(format="bgr24")
         img = cv2.flip(img, 1)
         rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         
-        result = hands_model.process(rgb)
+        # Inisialisasi MediaPipe secara aman langsung di dalam thread video
+        if self.hands is None:
+            self.hands = mp.solutions.hands.Hands(
+                min_detection_confidence=0.55,
+                min_tracking_confidence=0.55,
+                max_num_hands=2
+            )
+        
+        result = self.hands.process(rgb)
 
         self.total_nilai_isyarat = 0
         self.tangan_muncul = False
@@ -136,8 +134,8 @@ class GameVisionProcessor(VideoTransformerBase):
                 handedness = result.multi_handedness[i]
                 label = handedness.classification[0].label
                 
-                # MENGGAMBAR SKELETAL TRACKER (KERANGKA JARI AKTIF)
-                mp_drawing.draw_landmarks(img, hand_landmarks, mp.solutions.hands.HAND_CONNECTIONS)
+                # MENGGAMBAR KANVAS SKELETAL JARI (SCANNER GESTURE AKTIF)
+                self.mp_drawing.draw_landmarks(img, hand_landmarks, mp.solutions.hands.HAND_CONNECTIONS)
                 
                 nilai_angka = konversi_ke_angka_asl(hand_landmarks, label)
                 wrist_x = hand_landmarks.landmark[0].x
@@ -154,7 +152,7 @@ class GameVisionProcessor(VideoTransformerBase):
                 daftar_tangan.sort(key=lambda x: x[1])
                 self.total_nilai_isyarat = (daftar_tangan[0][0] * 10) + daftar_tangan[1][0]
 
-        # Teks overlay langsung pada kamera browser
+        # Gambarkan status pembacaan ke layar kamera
         cv2.putText(img, f"Isyarat Terbaca: {self.total_nilai_isyarat}", (20, 50), 
                     cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 200, 255), 2)
         return img
@@ -164,9 +162,9 @@ col1, col2 = st.columns([2, 1])
 
 with col1:
     st.subheader("🎥 Deteksi Kamera Web")
-    # Menggunakan KEY baru (V4) untuk memaksa bypass cache server Streamlit
+    # Gunakan Key V5 yang fresh untuk memotong cache error Linux terdahulu
     ctx = webrtc_streamer(
-        key="SignAI-MathVision-PIMNAS-V4",
+        key="SignAI-MathVision-PIMNAS-V5",
         mode=WebRtcMode.SENDRECV,
         video_processor_factory=GameVisionProcessor,
         rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
