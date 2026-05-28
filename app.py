@@ -20,15 +20,12 @@ if 'current_soal' not in st.session_state:
     st.session_state.current_soal = 0
 if 'feedback' not in st.session_state:
     st.session_state.feedback = ""
-if 'feedback_time' not in st.session_state:
-    st.session_state.feedback_time = 0
 if 'has_spoken_soal' not in st.session_state:
     st.session_state.has_spoken_soal = False
-
-# Variabel jembatan antar thread (Solusi pencegah AttributeError di HP)
 if 'global_isyarat' not in st.session_state:
     st.session_state.global_isyarat = 0
 
+# Bank Soal Asli Kamu
 if 'soal_list' not in st.session_state:
     soals = [
         "0+0", "5-5", "10-10", "20-20", "30-30", "40-40", "50-50",
@@ -103,7 +100,7 @@ def konversi_ke_angka_asl(hand, handedness):
     else:
         return thumb_up + index_up + middle_up + ring_up + pinky_up
 
-# ================== CORE ENGINE ==================
+# ================== CORE ENGINE (WEB-BASED WEBRTC) ==================
 class VideoProcessor(VideoTransformerBase):
     def __init__(self):
         self.mp_hands = mp.solutions.hands.Hands(
@@ -143,15 +140,15 @@ class VideoProcessor(VideoTransformerBase):
                 daftar_tangan.sort(key=lambda x: x[1])
                 total_nilai_isyarat = (daftar_tangan[0][0] * 10) + daftar_tangan[1][0]
 
-        # Oper nilai isyarat ke variabel global streamlit secara aman (Biar ga AttributeError)
+        # Oper nilai aman ke state global
         st.session_state.global_isyarat = total_nilai_isyarat
 
-        # Tampilkan overlay angka langsung di layar kamera HP/Laptop
-        cv2.putText(img, f"Isyarat Terbaca: {total_nilai_isyarat}", (20, 50), 
+        # Draw text realtime di layar kamera browser
+        cv2.putText(img, f"Isyarat: {total_nilai_isyarat}", (20, 50), 
                     cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 200, 0), 3)
         return img
 
-# Layout Grid Streamlit
+# Layout Aplikasi Web
 col1, col2 = st.columns([2, 1])
 
 with col1:
@@ -163,9 +160,8 @@ with col1:
         media_stream_constraints={"video": True, "audio": False}
     )
 
-# Logika Evaluasi Jawaban di Main Thread (Biar ga crash dan sinkron sama GUI)
+# Evaluasi logika matematika utama (Dilakukan di luar thread kamera biar ga crash)
 if ctx.state.playing:
-    # Ambil angka yang terbaca dari kamera secara realtime
     isyarat_saat_ini = st.session_state.global_isyarat
     
     soal = soal_list[current_soal]
@@ -176,7 +172,6 @@ if ctx.state.playing:
         a, b = map(int, soal.split("-"))
         jawaban_benar = a - b
 
-    # Cek jika jawaban di tangan anak SLB sudah benar
     if isyarat_saat_ini == jawaban_benar:
         st.session_state.skor += 1
         st.session_state.feedback = "BENAR 👍"
@@ -187,8 +182,6 @@ if ctx.state.playing:
 with col2:
     st.markdown(f"## 📝 Soal: <span style='color:#00C8FF'>{soal_list[current_soal]}</span>", unsafe_allow_html=True)
     st.metric(label="🏆 Skor Kamu", value=st.session_state.skor)
-    
-    # Tampilkan pembacaan teks di panel kontrol samping
     st.markdown(f"### 🫵 Tangan Terbaca: `{st.session_state.global_isyarat}`")
     
     if st.session_state.feedback != "":
