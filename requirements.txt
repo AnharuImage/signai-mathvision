@@ -1,5 +1,6 @@
-streamlit
-streamlit-webrtc
-mediapipe
-opencv-python-headless
-gTTS
+streamlit>=1.28.0
+opencv-python-headless==4.8.1.78
+mediapipe==0.10.9
+gtts==2.5.1
+pygame==2.5.2
+numpy>=1.24.0
