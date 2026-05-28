@@ -22,10 +22,8 @@ if 'has_spoken_soal' not in st.session_state:
     st.session_state.has_spoken_soal = False
 if 'feedback' not in st.session_state:
     st.session_state.feedback = ""
-if 'feedback_time' not in st.session_state:
-    st.session_state.feedback_time = 0
 
-# Bank Soal PKM-PM Kamu
+# Bank Soal
 if 'soal_list' not in st.session_state:
     soals = [
         "0+0", "5-5", "10-10", "20-20", "30-30", "40-40", "50-50",
@@ -66,7 +64,6 @@ if not st.session_state.has_spoken_soal:
     st.session_state.has_spoken_soal = True
 
 # ================== GLOBAL MEDIAPIPE INITIALIZATION ==================
-# Diinisialisasi di skrip utama agar tidak merusak thread internal WebRTC
 @st.cache_resource
 def get_mediapipe_hands():
     return mp.solutions.hands.Hands(
@@ -93,13 +90,13 @@ def konversi_ke_angka_asl(hand, label):
 
     if thumb_up == 0 and index_up == 0 and middle_up == 0 and ring_up == 0 and pinky_up == 0:
         return 0
-    if thumb_up == 0 and index_up == 1 and middle_up == 0 and ring_up == 0 and pinky_up == 0:
+    elif thumb_up == 0 and index_up == 1 and middle_up == 0 and ring_up == 0 and pinky_up == 0:
         return 1
     elif thumb_up == 0 and index_up == 1 and middle_up == 1 and ring_up == 0 and pinky_up == 0:
         return 2
     elif thumb_up == 0 and index_up == 1 and middle_up == 1 and ring_up == 1 and pinky_up == 0:
         return 3
-    elif thumb_up == 0 scarcity = 0 and index_up == 1 and middle_up == 1 and ring_up == 1 and pinky_up == 1:
+    elif thumb_up == 0 and index_up == 1 and middle_up == 1 and ring_up == 1 and pinky_up == 1:
         return 4
     elif thumb_up == 1 and index_up == 1 and middle_up == 1 and ring_up == 1 and pinky_up == 1:
         return 5
@@ -114,7 +111,7 @@ def konversi_ke_angka_asl(hand, label):
     else:
         return thumb_up + index_up + middle_up + ring_up + pinky_up
 
-# ================== GAME VISION PROCESSOR (CLEAN WITHOUT STATE) ==================
+# ================== GAME VISION PROCESSOR ==================
 class GameVisionProcessor(VideoTransformerBase):
     def __init__(self):
         self.total_nilai_isyarat = 0
@@ -125,7 +122,6 @@ class GameVisionProcessor(VideoTransformerBase):
         img = cv2.flip(img, 1)
         rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         
-        # Proses deteksi menggunakan objek global
         result = hands_model.process(rgb)
 
         self.total_nilai_isyarat = 0
@@ -140,7 +136,7 @@ class GameVisionProcessor(VideoTransformerBase):
                 handedness = result.multi_handedness[i]
                 label = handedness.classification[0].label
                 
-                # GAMBAR GESTURE SCANNER NYALA DI WEB HP/PC
+                # MENGGAMBAR SKELETAL TRACKER (KERANGKA JARI AKTIF)
                 mp_drawing.draw_landmarks(img, hand_landmarks, mp.solutions.hands.HAND_CONNECTIONS)
                 
                 nilai_angka = konversi_ke_angka_asl(hand_landmarks, label)
@@ -158,18 +154,19 @@ class GameVisionProcessor(VideoTransformerBase):
                 daftar_tangan.sort(key=lambda x: x[1])
                 self.total_nilai_isyarat = (daftar_tangan[0][0] * 10) + daftar_tangan[1][0]
 
-        # Overlay UI sederhana di layar kamera browser
+        # Teks overlay langsung pada kamera browser
         cv2.putText(img, f"Isyarat Terbaca: {self.total_nilai_isyarat}", (20, 50), 
                     cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 200, 255), 2)
         return img
 
-# ================== DESAIN TAMPILAN WEB HALAMAN STREAMLIT ==================
+# ================== RENDER COMPONENT WEB ==================
 col1, col2 = st.columns([2, 1])
 
 with col1:
     st.subheader("🎥 Deteksi Kamera Web")
+    # Menggunakan KEY baru (V4) untuk memaksa bypass cache server Streamlit
     ctx = webrtc_streamer(
-        key="SignAI-MathVision-Final-PIMNAS",
+        key="SignAI-MathVision-PIMNAS-V4",
         mode=WebRtcMode.SENDRECV,
         video_processor_factory=GameVisionProcessor,
         rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
@@ -177,13 +174,11 @@ with col1:
         async_processing=True
     )
 
-# Tempat penampung pembacaan data stabil 1.5 detik di skrip utama (Aman 100%)
 if 'kunci_jawaban_time' not in st.session_state:
     st.session_state.kunci_jawaban_time = None
 if 'last_val' not in st.session_state:
     st.session_state.last_val = -1
 
-# Ambil data secara aman dari thread kamera jika sedang aktif berjalan
 nilai_realtime = 0
 if ctx.video_transformer:
     nilai_realtime = ctx.video_transformer.total_nilai_isyarat
@@ -195,7 +190,6 @@ if ctx.video_transformer:
             st.session_state.last_val = nilai_realtime
             st.session_state.kunci_jawaban_time = current_time
         elif st.session_state.kunci_jawaban_time and (current_time - st.session_state.kunci_jawaban_time > 1.5):
-            # HITUNG LOGIKA JAWABAN BENAR/SALAH
             soal = soal_list[current_soal]
             if "+" in soal:
                 a, b = map(int, soal.split("+"))
