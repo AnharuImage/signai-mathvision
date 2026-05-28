@@ -238,6 +238,4 @@ with col2:
         st.session_state.current_soal = 0
         st.session_state.has_spoken_soal = False
         st.session_state.feedback = ""
-        st.rerun()ent_soal = 0
-        st.session_state.has_spoken_soal = False
         st.rerun()
