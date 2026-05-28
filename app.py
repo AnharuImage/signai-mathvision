@@ -21,7 +21,7 @@ if 'current_soal' not in st.session_state:
 if 'has_spoken_soal' not in st.session_state:
     st.session_state.has_spoken_soal = False
 
-# Bank Soal Tetap Diacak Sesuai Kode Asli Kamu
+# Bank Soal
 if 'soal_list' not in st.session_state:
     soals = [
         "0+0", "5-5", "10-10", "20-20", "30-30", "40-40", "50-50",
@@ -34,9 +34,9 @@ if 'soal_list' not in st.session_state:
     random.shuffle(soals)
     st.session_state.soal_list = soals
 
+# Buat shortcut agar kode di bawah lebih pendek
 soal_list = st.session_state.soal_list
 
-# Placeholder Suara di Sisi Browser (Aman dari Sandbox Block)
 audio_placeholder = st.empty()
 
 # ================== AUDIO ENGINE VIA HTML5 ==================
@@ -54,7 +54,6 @@ def speak_web(text):
     except:
         pass
 
-# Trigger suara soal baru saat halaman di-refresh
 if not st.session_state.has_spoken_soal:
     soal_aktif = soal_list[st.session_state.current_soal]
     soal_teks = soal_aktif.replace("+", " tambah ").replace("-", " kurang ")
@@ -100,18 +99,17 @@ def konversi_ke_angka_asl(hand, handedness):
     else:
         return thumb_up + index_up + middle_up + ring_up + pinky_up
 
-# ================== HIGH PERFORMANCE VIDEO PROCESSOR ==================
+# ================== GAME VISION PROCESSOR (FIXED STRUCTURE) ==================
 class GameVisionProcessor(VideoTransformerBase):
-    def __init__(self, soal_list_ref):
+    def __init__(self):
         self.mp_hands = mp.solutions.hands.Hands(
             min_detection_confidence=0.55,
             min_tracking_confidence=0.55,
             max_num_hands=2
         )
         self.mp_drawing = mp.solutions.drawing_utils
-        self.soal_list = soal_list_ref
         
-        # Variabel tracker internal thread kamera (Anti-Lag & Sinkron)
+        # Tracker internal kestabilan 1.5 detik
         self.last_detected_fingers = -1
         self.stable_start_time = None
         self.feedback_text = ""
@@ -135,14 +133,13 @@ class GameVisionProcessor(VideoTransformerBase):
                 hand_landmarks = result.multi_hand_landmarks[i]
                 handedness = result.multi_handedness[i]
                 
-                # MENGGAMBAR KERANGKA TANGAN (SCANNER VISUAL)
+                # SKELETAL SCANNER JALAN DI WEB (MENGGAMBAR KERANGKA TANGAN)
                 self.mp_drawing.draw_landmarks(img, hand_landmarks, mp.solutions.hands.HAND_CONNECTIONS)
                 
                 nilai_angka = konversi_ke_angka_asl(hand_landmarks, handedness)
                 wrist_x = hand_landmarks.landmark[0].x
                 daftar_tangan.append((nilai_angka, wrist_x))
             
-            # Logika Spasial Puluhan & Satuan asli kamu
             if len(daftar_tangan) == 1:
                 single_nilai = daftar_tangan[0][0]
                 single_x = daftar_tangan[0][1]
@@ -154,7 +151,6 @@ class GameVisionProcessor(VideoTransformerBase):
                 daftar_tangan.sort(key=lambda x: x[1])
                 total_nilai_isyarat = (daftar_tangan[0][0] * 10) + daftar_tangan[1][0]
 
-        # --- LOGIKA EVALUASI REALTIME DI DALAM LAYAR ---
         current_time = time.time()
         
         if tangan_muncul:
@@ -163,9 +159,9 @@ class GameVisionProcessor(VideoTransformerBase):
                 self.stable_start_time = current_time
             
             elif self.stable_start_time and (current_time - self.stable_start_time > 1.5):
-                # Ambil index soal terbaru dari session state secara aman
+                # Membaca bank soal dari session state secara aman di dalam kelas
                 idx = st.session_state.current_soal
-                soal = self.soal_list[idx]
+                soal = st.session_state.soal_list[idx]
                 
                 if "+" in soal:
                     a, b = map(int, soal.split("+"))
@@ -177,25 +173,25 @@ class GameVisionProcessor(VideoTransformerBase):
                 if total_nilai_isyarat == jawaban_benar:
                     self.feedback_text = "BENAR 👍"
                     st.session_state.skor += 1
-                    st.session_state.current_soal = (idx + 1) % len(self.soal_list)
+                    st.session_state.current_soal = (idx + 1) % len(st.session_state.soal_list)
                     st.session_state.has_spoken_soal = False
                 else:
                     self.feedback_text = "SALAH ❌"
                 
-                self.feedback_end_time = current_time + 2.0  # Durasi teks feedback muncul (2 detik)
+                self.feedback_end_time = current_time + 2.0
                 self.stable_start_time = None
         else:
             self.stable_start_time = None
 
-        # --- DRAWING UI OVERLAY (Persis Tampilan PC Kamu) ---
-        # Dark overlay atas
+        # --- DRAW GRAPHICS OVERLAY ON CAMERA SCREEN ---
         overlay = img.copy()
         cv2.rectangle(overlay, (10, 10), (480, 150), (30, 30, 30), -1)
         img = cv2.addWeighted(overlay, 0.6, img, 0.4, 0)
 
-        # Cetak Teks Informasi Game
         idx_aktif = st.session_state.current_soal
-        cv2.putText(img, f"Soal: {self.soal_list[idx_aktif]}", (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 200, 255), 2)
+        soal_aktif = st.session_state.soal_list[idx_aktif]
+        
+        cv2.putText(img, f"Soal: {soal_aktif}", (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 200, 255), 2)
         
         if tangan_muncul:
             text_jawab = f"Membaca Isyarat: {total_nilai_isyarat}"
@@ -206,7 +202,6 @@ class GameVisionProcessor(VideoTransformerBase):
 
         cv2.putText(img, f"Skor: {st.session_state.skor}", (20, 135), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (240, 240, 240), 2)
 
-        # Cetak Pop-up BENAR / SALAH di Samping Layar
         if self.feedback_text and current_time < self.feedback_end_time:
             warna = (120, 220, 0) if "BENAR" in self.feedback_text else (50, 50, 255)
             cv2.putText(img, self.feedback_text, (490, 90), cv2.FONT_HERSHEY_DUPLEX, 1.5, warna, 3)
@@ -217,11 +212,12 @@ class GameVisionProcessor(VideoTransformerBase):
 col1, col2 = st.columns([3, 1])
 
 with col1:
-    # Mengirimkan referensi list soal ke class transformer agar sinkron tanpa jeda rerun
+    st.subheader("🎥 Deteksi Gestur Kamera")
+    # Memanggil factory class murni tanpa closure lambda berparameter eksternal
     ctx = webrtc_streamer(
-        key="SignAI-MathVision-PIMNAS",
+        key="SignAI-MathVision-PIMNAS-FIXED",
         mode=WebRtcMode.SENDRECV,
-        video_processor_factory=lambda: GameVisionProcessor(soal_list),
+        video_processor_factory=GameVisionProcessor,
         rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
         media_stream_constraints={"video": {"width": 640, "height": 480}, "audio": False},
         async_processing=True
@@ -234,7 +230,6 @@ with col2:
     
     st.info("💡 Petunjuk: Arahkan tangan ke kamera. Diamkan posisi isyarat selama 1.5 detik sampai persentase membaca (100%) untuk mengunci jawaban.")
     
-    # Tombol bantu buat reset skor jika dibutuhkan juri saat presentasi
     if st.button("🔄 Reset Game"):
         st.session_state.skor = 0
         st.session_state.current_soal = 0
