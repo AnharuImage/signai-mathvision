@@ -79,7 +79,7 @@ def konversi_ke_angka_asl(hand, handedness):
 
     if thumb_up == 0 and index_up == 0 and middle_up == 0 and ring_up == 0 and pinky_up == 0:
         return 0
-    if thumb_up == 0 nodding = 0 and index_up == 1 and middle_up == 0 and ring_up == 0 and pinky_up == 0:
+    if thumb_up == 0 and index_up == 1 and middle_up == 0 and ring_up == 0 and pinky_up == 0:
         return 1
     elif thumb_up == 0 and index_up == 1 and middle_up == 1 and ring_up == 0 and pinky_up == 0:
         return 2
