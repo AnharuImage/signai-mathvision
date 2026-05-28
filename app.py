@@ -25,7 +25,7 @@ if 'has_spoken_soal' not in st.session_state:
 if 'global_isyarat' not in st.session_state:
     st.session_state.global_isyarat = 0
 
-# Bank Soal Asli Kamu
+# Bank Soal PKM-PM Kamu
 if 'soal_list' not in st.session_state:
     soals = [
         "0+0", "5-5", "10-10", "20-20", "30-30", "40-40", "50-50",
@@ -79,7 +79,7 @@ def konversi_ke_angka_asl(hand, handedness):
 
     if thumb_up == 0 and index_up == 0 and middle_up == 0 and ring_up == 0 and pinky_up == 0:
         return 0
-    if thumb_up == 0 and index_up == 1 and middle_up == 0 and ring_up == 0 and pinky_up == 0:
+    if thumb_up == 0 nodding = 0 and index_up == 1 and middle_up == 0 and ring_up == 0 and pinky_up == 0:
         return 1
     elif thumb_up == 0 and index_up == 1 and middle_up == 1 and ring_up == 0 and pinky_up == 0:
         return 2
@@ -100,7 +100,7 @@ def konversi_ke_angka_asl(hand, handedness):
     else:
         return thumb_up + index_up + middle_up + ring_up + pinky_up
 
-# ================== CORE ENGINE (WEB-BASED WEBRTC) ==================
+# ================== CORE ENGINE (WEB WEBRTC) ==================
 class VideoProcessor(VideoTransformerBase):
     def __init__(self):
         self.mp_hands = mp.solutions.hands.Hands(
@@ -140,7 +140,7 @@ class VideoProcessor(VideoTransformerBase):
                 daftar_tangan.sort(key=lambda x: x[1])
                 total_nilai_isyarat = (daftar_tangan[0][0] * 10) + daftar_tangan[1][0]
 
-        # Oper nilai aman ke state global
+        # Oper nilai aman ke state global streamlit
         st.session_state.global_isyarat = total_nilai_isyarat
 
         # Draw text realtime di layar kamera browser
@@ -148,7 +148,7 @@ class VideoProcessor(VideoTransformerBase):
                     cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 200, 0), 3)
         return img
 
-# Layout Aplikasi Web
+# Layout Grid Aplikasi Web
 col1, col2 = st.columns([2, 1])
 
 with col1:
@@ -160,7 +160,7 @@ with col1:
         media_stream_constraints={"video": True, "audio": False}
     )
 
-# Evaluasi logika matematika utama (Dilakukan di luar thread kamera biar ga crash)
+# Evaluasi logika matematika utama (Aman dari AttributeError)
 if ctx.state.playing:
     isyarat_saat_ini = st.session_state.global_isyarat
     
