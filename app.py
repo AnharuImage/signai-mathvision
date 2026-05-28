@@ -20,8 +20,12 @@ if 'current_soal' not in st.session_state:
     st.session_state.current_soal = 0
 if 'has_spoken_soal' not in st.session_state:
     st.session_state.has_spoken_soal = False
+if 'feedback' not in st.session_state:
+    st.session_state.feedback = ""
+if 'feedback_time' not in st.session_state:
+    st.session_state.feedback_time = 0
 
-# Bank Soal
+# Bank Soal PKM-PM Kamu
 if 'soal_list' not in st.session_state:
     soals = [
         "0+0", "5-5", "10-10", "20-20", "30-30", "40-40", "50-50",
@@ -34,12 +38,12 @@ if 'soal_list' not in st.session_state:
     random.shuffle(soals)
     st.session_state.soal_list = soals
 
-# Buat shortcut agar kode di bawah lebih pendek
 soal_list = st.session_state.soal_list
-
-audio_placeholder = st.empty()
+current_soal = st.session_state.current_soal
 
 # ================== AUDIO ENGINE VIA HTML5 ==================
+audio_placeholder = st.empty()
+
 def speak_web(text):
     try:
         tts = gTTS(text=text, lang='id', slow=False)
@@ -55,16 +59,27 @@ def speak_web(text):
         pass
 
 if not st.session_state.has_spoken_soal:
-    soal_aktif = soal_list[st.session_state.current_soal]
-    soal_teks = soal_aktif.replace("+", " tambah ").replace("-", " kurang ")
+    soal_teks = soal_list[current_soal].replace("+", " tambah ").replace("-", " kurang ")
     if "0" in soal_teks:
         soal_teks = soal_teks.replace("0", "nol")
     speak_web(f"Berapakah {soal_teks}?")
     st.session_state.has_spoken_soal = True
 
+# ================== GLOBAL MEDIAPIPE INITIALIZATION ==================
+# Diinisialisasi di skrip utama agar tidak merusak thread internal WebRTC
+@st.cache_resource
+def get_mediapipe_hands():
+    return mp.solutions.hands.Hands(
+        min_detection_confidence=0.55,
+        min_tracking_confidence=0.55,
+        max_num_hands=2
+    )
+
+hands_model = get_mediapipe_hands()
+mp_drawing = mp.solutions.drawing_utils
+
 # ================== LOGIKA ASL INTERPRETATION ==================
-def konversi_ke_angka_asl(hand, handedness):
-    label = handedness.classification[0].label
+def konversi_ke_angka_asl(hand, label):
     thumb_up = 0
     if label == "Right":  
         if hand.landmark[4].x < hand.landmark[2].x: thumb_up = 1
@@ -84,7 +99,7 @@ def konversi_ke_angka_asl(hand, handedness):
         return 2
     elif thumb_up == 0 and index_up == 1 and middle_up == 1 and ring_up == 1 and pinky_up == 0:
         return 3
-    elif thumb_up == 0 and index_up == 1 and middle_up == 1 and ring_up == 1 and pinky_up == 1:
+    elif thumb_up == 0 scarcity = 0 and index_up == 1 and middle_up == 1 and ring_up == 1 and pinky_up == 1:
         return 4
     elif thumb_up == 1 and index_up == 1 and middle_up == 1 and ring_up == 1 and pinky_up == 1:
         return 5
@@ -99,44 +114,36 @@ def konversi_ke_angka_asl(hand, handedness):
     else:
         return thumb_up + index_up + middle_up + ring_up + pinky_up
 
-# ================== GAME VISION PROCESSOR (FIXED STRUCTURE) ==================
+# ================== GAME VISION PROCESSOR (CLEAN WITHOUT STATE) ==================
 class GameVisionProcessor(VideoTransformerBase):
     def __init__(self):
-        self.mp_hands = mp.solutions.hands.Hands(
-            min_detection_confidence=0.55,
-            min_tracking_confidence=0.55,
-            max_num_hands=2
-        )
-        self.mp_drawing = mp.solutions.drawing_utils
-        
-        # Tracker internal kestabilan 1.5 detik
-        self.last_detected_fingers = -1
-        self.stable_start_time = None
-        self.feedback_text = ""
-        self.feedback_end_time = 0
+        self.total_nilai_isyarat = 0
+        self.tangan_muncul = False
 
     def transform(self, frame):
         img = frame.to_ndarray(format="bgr24")
         img = cv2.flip(img, 1)
-        h, w, c = img.shape
         rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        result = self.mp_hands.process(rgb)
+        
+        # Proses deteksi menggunakan objek global
+        result = hands_model.process(rgb)
 
-        total_nilai_isyarat = 0
-        tangan_muncul = False
+        self.total_nilai_isyarat = 0
+        self.tangan_muncul = False
         
         if result.multi_hand_landmarks and result.multi_handedness:
-            tangan_muncul = True
+            self.tangan_muncul = True
             daftar_tangan = []
             
             for i in range(len(result.multi_hand_landmarks)):
                 hand_landmarks = result.multi_hand_landmarks[i]
                 handedness = result.multi_handedness[i]
+                label = handedness.classification[0].label
                 
-                # SKELETAL SCANNER JALAN DI WEB (MENGGAMBAR KERANGKA TANGAN)
-                self.mp_drawing.draw_landmarks(img, hand_landmarks, mp.solutions.hands.HAND_CONNECTIONS)
+                # GAMBAR GESTURE SCANNER NYALA DI WEB HP/PC
+                mp_drawing.draw_landmarks(img, hand_landmarks, mp.solutions.hands.HAND_CONNECTIONS)
                 
-                nilai_angka = konversi_ke_angka_asl(hand_landmarks, handedness)
+                nilai_angka = konversi_ke_angka_asl(hand_landmarks, label)
                 wrist_x = hand_landmarks.landmark[0].x
                 daftar_tangan.append((nilai_angka, wrist_x))
             
@@ -144,78 +151,25 @@ class GameVisionProcessor(VideoTransformerBase):
                 single_nilai = daftar_tangan[0][0]
                 single_x = daftar_tangan[0][1]
                 if single_x < 0.5:
-                    total_nilai_isyarat = single_nilai * 10
+                    self.total_nilai_isyarat = single_nilai * 10
                 else:
-                    total_nilai_isyarat = single_nilai
+                    self.total_nilai_isyarat = single_nilai
             elif len(daftar_tangan) == 2:
                 daftar_tangan.sort(key=lambda x: x[1])
-                total_nilai_isyarat = (daftar_tangan[0][0] * 10) + daftar_tangan[1][0]
+                self.total_nilai_isyarat = (daftar_tangan[0][0] * 10) + daftar_tangan[1][0]
 
-        current_time = time.time()
-        
-        if tangan_muncul:
-            if total_nilai_isyarat != self.last_detected_fingers:
-                self.last_detected_fingers = total_nilai_isyarat
-                self.stable_start_time = current_time
-            
-            elif self.stable_start_time and (current_time - self.stable_start_time > 1.5):
-                # Membaca bank soal dari session state secara aman di dalam kelas
-                idx = st.session_state.current_soal
-                soal = st.session_state.soal_list[idx]
-                
-                if "+" in soal:
-                    a, b = map(int, soal.split("+"))
-                    jawaban_benar = a + b
-                else:
-                    a, b = map(int, soal.split("-"))
-                    jawaban_benar = a - b
-
-                if total_nilai_isyarat == jawaban_benar:
-                    self.feedback_text = "BENAR 👍"
-                    st.session_state.skor += 1
-                    st.session_state.current_soal = (idx + 1) % len(st.session_state.soal_list)
-                    st.session_state.has_spoken_soal = False
-                else:
-                    self.feedback_text = "SALAH ❌"
-                
-                self.feedback_end_time = current_time + 2.0
-                self.stable_start_time = None
-        else:
-            self.stable_start_time = None
-
-        # --- DRAW GRAPHICS OVERLAY ON CAMERA SCREEN ---
-        overlay = img.copy()
-        cv2.rectangle(overlay, (10, 10), (480, 150), (30, 30, 30), -1)
-        img = cv2.addWeighted(overlay, 0.6, img, 0.4, 0)
-
-        idx_aktif = st.session_state.current_soal
-        soal_aktif = st.session_state.soal_list[idx_aktif]
-        
-        cv2.putText(img, f"Soal: {soal_aktif}", (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 200, 255), 2)
-        
-        if tangan_muncul:
-            text_jawab = f"Membaca Isyarat: {total_nilai_isyarat}"
-            if self.stable_start_time:
-                progress = int((current_time - self.stable_start_time) / 1.5 * 100)
-                text_jawab += f" ({min(progress, 100)}%)"
-            cv2.putText(img, text_jawab, (20, 95), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 200, 0), 2)
-
-        cv2.putText(img, f"Skor: {st.session_state.skor}", (20, 135), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (240, 240, 240), 2)
-
-        if self.feedback_text and current_time < self.feedback_end_time:
-            warna = (120, 220, 0) if "BENAR" in self.feedback_text else (50, 50, 255)
-            cv2.putText(img, self.feedback_text, (490, 90), cv2.FONT_HERSHEY_DUPLEX, 1.5, warna, 3)
-
+        # Overlay UI sederhana di layar kamera browser
+        cv2.putText(img, f"Isyarat Terbaca: {self.total_nilai_isyarat}", (20, 50), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 200, 255), 2)
         return img
 
-# ================== RENDER COMPONENT WEB ==================
-col1, col2 = st.columns([3, 1])
+# ================== DESAIN TAMPILAN WEB HALAMAN STREAMLIT ==================
+col1, col2 = st.columns([2, 1])
 
 with col1:
-    st.subheader("🎥 Deteksi Gestur Kamera")
-    # Memanggil factory class murni tanpa closure lambda berparameter eksternal
+    st.subheader("🎥 Deteksi Kamera Web")
     ctx = webrtc_streamer(
-        key="SignAI-MathVision-PIMNAS-FIXED",
+        key="SignAI-MathVision-Final-PIMNAS",
         mode=WebRtcMode.SENDRECV,
         video_processor_factory=GameVisionProcessor,
         rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
@@ -223,15 +177,67 @@ with col1:
         async_processing=True
     )
 
+# Tempat penampung pembacaan data stabil 1.5 detik di skrip utama (Aman 100%)
+if 'kunci_jawaban_time' not in st.session_state:
+    st.session_state.kunci_jawaban_time = None
+if 'last_val' not in st.session_state:
+    st.session_state.last_val = -1
+
+# Ambil data secara aman dari thread kamera jika sedang aktif berjalan
+nilai_realtime = 0
+if ctx.video_transformer:
+    nilai_realtime = ctx.video_transformer.total_nilai_isyarat
+    tangan_aktif = ctx.video_transformer.tangan_muncul
+    
+    current_time = time.time()
+    if tangan_aktif:
+        if nilai_realtime != st.session_state.last_val:
+            st.session_state.last_val = nilai_realtime
+            st.session_state.kunci_jawaban_time = current_time
+        elif st.session_state.kunci_jawaban_time and (current_time - st.session_state.kunci_jawaban_time > 1.5):
+            # HITUNG LOGIKA JAWABAN BENAR/SALAH
+            soal = soal_list[current_soal]
+            if "+" in soal:
+                a, b = map(int, soal.split("+"))
+                jawaban_benar = a + b
+            else:
+                a, b = map(int, soal.split("-"))
+                jawaban_benar = a - b
+
+            if nilai_realtime == jawaban_benar:
+                st.session_state.feedback = "BENAR 👍"
+                st.session_state.skor += 1
+                st.session_state.current_soal = (current_soal + 1) % len(soal_list)
+                st.session_state.has_spoken_soal = False
+                speak_web("BENAR")
+            else:
+                st.session_state.feedback = "SALAH ❌, coba lagi!"
+                speak_web("SALAH, ayo coba lagi")
+            
+            st.session_state.kunci_jawaban_time = None
+            st.rerun()
+    else:
+        st.session_state.kunci_jawaban_time = None
+
 with col2:
-    st.markdown("### 🏆 Papan Informasi")
-    st.subheader(f"Soal Sekarang: {soal_list[st.session_state.current_soal]}")
-    st.metric("Skor Terkumpul", st.session_state.skor)
+    st.markdown("### 🏆 Status Sesi PKM-PM")
+    st.markdown(f"## Soal: <span style='color:#00C8FF'>{soal_list[st.session_state.current_soal]}</span>", unsafe_allow_html=True)
+    st.metric(label="🏆 Total Skor", value=st.session_state.skor)
     
-    st.info("💡 Petunjuk: Arahkan tangan ke kamera. Diamkan posisi isyarat selama 1.5 detik sampai persentase membaca (100%) untuk mengunci jawaban.")
+    st.markdown("---")
+    st.markdown(f"### 🫵 Isyarat Tangan: `{nilai_realtime}`")
     
+    if st.session_state.feedback:
+        if "BENAR" in st.session_state.feedback:
+            st.success(st.session_state.feedback)
+        else:
+            st.error(st.session_state.feedback)
+
     if st.button("🔄 Reset Game"):
         st.session_state.skor = 0
         st.session_state.current_soal = 0
+        st.session_state.has_spoken_soal = False
+        st.session_state.feedback = ""
+        st.rerun()ent_soal = 0
         st.session_state.has_spoken_soal = False
         st.rerun()
